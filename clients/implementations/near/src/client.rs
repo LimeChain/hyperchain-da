@@ -39,7 +39,7 @@ use zksync_da_client::{
 };
 use zksync_env_config::FromEnv;
 
-use crate::evm_types::{BlobInclusionProof, NearX::NearXInstance};
+use crate::near_types::{BlobInclusionProof, NearX::NearXInstance};
 
 use da_config::near::NearConfig;
 use da_utils::{errors::to_non_retriable_da_error, proto_config_parser::try_parse_proto_config};
@@ -267,7 +267,7 @@ impl DataAvailabilityClient for NearClient {
         };
 
         Ok(Some(types::InclusionData {
-            data: to_vec(&attestation_data).unwrap(),
+            data: to_vec(&attestation_data).map_err(to_non_retriable_da_error)?,
         }))
     }
 

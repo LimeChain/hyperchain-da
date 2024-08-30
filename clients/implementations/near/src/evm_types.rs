@@ -1,11 +1,17 @@
 use alloy::sol;
-use near_jsonrpc_client::methods::light_client_proof::RpcLightClientExecutionProofResponse;
+use serde::{Serialize, Deserialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use near_primitives::{
-    merkle::{Direction as NearDirection, MerklePathItem as NearMerklePathItem},
+    merkle::MerklePath,
+    types::{AccountId, Balance, BlockHeight, Gas},
+    hash::CryptoHash,
+    serialize::dec_format,
     views::{
-        BlockHeaderInnerLiteView as NearBlockHeaderInnerLiteView,
         ExecutionOutcomeWithIdView as NearExecutionOutcomeWithIdView,
         LightClientBlockLiteView as NearLightClientBlockLiteView,
+        ExecutionOutcomeView as NearExecutionOutcomeView,
+        ExecutionStatusView,
+        BlockHeaderInnerLiteView as NearBlockHeaderInnerLiteView,
     },
 };
 
@@ -15,110 +21,52 @@ sol!(
     "contract/abi.json"
 );
 
-sol! {
-    struct BlobInclusionProof {
-        ExecutionProofResponse proof;
-        bytes32 headMerkleRoot;
-    }
-
-    struct ExecutionProofResponse {
-        ExecutionOutcomeWithIdView outcomeProof;
-        MerklePathItem[] outcomeRootProof;
-        LightClientBlockLiteView blockHeaderLite;
-        MerklePathItem[] blockProof;
-    }
-
-    struct ExecutionOutcomeWithIdView {
-        MerklePathItem[] proof;
-        bytes32 blockHash;
-        bytes32 id;
-    }
-
-    struct MerklePathItem {
-        bytes32 hash;
-        Direction direction;
-    }
-
-    enum Direction {
-        Left,
-        Right,
-    }
-
-    struct LightClientBlockLiteView {
-        bytes32 prevBlockHash;
-        bytes32 innerRestHash;
-        BlockHeaderInnerLiteView innerLite;
-    }
-
-    struct BlockHeaderInnerLiteView {
-        uint64 height;
-        bytes32 epochId;
-        bytes32 nextEpochId;
-        bytes32 prevStateRoot;
-        bytes32 outcomeRoot;
-        uint64 timestamp;
-        bytes32 nextBpHash;
-        bytes32 blockMerkleRoot;
-    }
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct BlobInclusionProof {
+    pub outcome_proof: ExecutionOutcomeWithIdView,
+    pub outcome_root_proof: MerklePath,
+    pub block_header_lite: LightClientBlockLiteView,
+    pub block_proof: MerklePath,
+    pub head_merkle_root: [u8; 32],
 }
 
-impl TryFrom<NearMerklePathItem> for MerklePathItem {
-    type Error = anyhow::Error;
-
-    fn try_from(value: NearMerklePathItem) -> Result<Self, Self::Error> {
-        Ok(MerklePathItem {
-            hash: value.hash.0.into(),
-            direction: value.direction.try_into()?,
-        })
-    }
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct LightClientBlockLiteView {
+    pub prev_block_hash: CryptoHash,
+    pub inner_rest_hash: CryptoHash,
+    pub inner_lite: BlockHeaderInnerLiteView,
 }
 
-impl TryFrom<NearDirection> for Direction {
-    type Error = anyhow::Error;
-
-    fn try_from(value: NearDirection) -> Result<Self, Self::Error> {
-        Ok(match value {
-            NearDirection::Left => Direction::Left,
-            NearDirection::Right => Direction::Right,
-        })
-    }
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct BlockHeaderInnerLiteView {
+    pub height: BlockHeight,
+    pub epoch_id: CryptoHash,
+    pub next_epoch_id: CryptoHash,
+    pub prev_state_root: CryptoHash,
+    pub outcome_root: CryptoHash,
+    #[serde(with = "dec_format")]
+    pub timestamp_nanosec: u64,
+    pub next_bp_hash: CryptoHash,
+    pub block_merkle_root: CryptoHash,
 }
 
-impl TryFrom<NearExecutionOutcomeWithIdView> for ExecutionOutcomeWithIdView {
-    type Error = anyhow::Error;
-
-    fn try_from(value: NearExecutionOutcomeWithIdView) -> Result<Self, Self::Error> {
-        Ok(ExecutionOutcomeWithIdView {
-            proof: value
-                .proof
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-            blockHash: value.block_hash.0.into(),
-            id: value.id.0.into(),
-        })
-    }
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct ExecutionOutcomeWithIdView {
+    pub proof: MerklePath,
+    pub block_hash: CryptoHash,
+    pub id: CryptoHash,
+    pub outcome: ExecutionOutcomeView,
 }
 
-impl TryFrom<RpcLightClientExecutionProofResponse> for ExecutionProofResponse {
-    type Error = anyhow::Error;
-
-    fn try_from(value: RpcLightClientExecutionProofResponse) -> Result<Self, Self::Error> {
-        Ok(ExecutionProofResponse {
-            outcomeProof: value.outcome_proof.try_into()?,
-            outcomeRootProof: value
-                .outcome_root_proof
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-            blockHeaderLite: value.block_header_lite.try_into()?,
-            blockProof: value
-                .block_proof
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        })
-    }
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+pub struct ExecutionOutcomeView {
+    pub logs: Vec<String>,
+    pub receipt_ids: Vec<CryptoHash>,
+    pub gas_burnt: Gas,
+    #[serde(with = "dec_format")]
+    pub tokens_burnt: Balance,
+    pub executor_id: AccountId,
+    pub status: ExecutionStatusView,
 }
 
 impl TryFrom<NearLightClientBlockLiteView> for LightClientBlockLiteView {
@@ -126,9 +74,9 @@ impl TryFrom<NearLightClientBlockLiteView> for LightClientBlockLiteView {
 
     fn try_from(value: NearLightClientBlockLiteView) -> Result<Self, Self::Error> {
         Ok(LightClientBlockLiteView {
-            prevBlockHash: value.prev_block_hash.0.into(),
-            innerRestHash: value.inner_rest_hash.0.into(),
-            innerLite: value.inner_lite.try_into()?,
+            prev_block_hash: value.prev_block_hash,
+            inner_rest_hash: value.inner_rest_hash,
+            inner_lite: value.inner_lite.try_into()?,
         })
     }
 }
@@ -139,13 +87,41 @@ impl TryFrom<NearBlockHeaderInnerLiteView> for BlockHeaderInnerLiteView {
     fn try_from(value: NearBlockHeaderInnerLiteView) -> Result<Self, Self::Error> {
         Ok(BlockHeaderInnerLiteView {
             height: value.height,
-            epochId: value.epoch_id.0.into(),
-            nextEpochId: value.next_epoch_id.0.into(),
-            prevStateRoot: value.prev_state_root.0.into(),
-            outcomeRoot: value.outcome_root.0.into(),
-            timestamp: value.timestamp,
-            nextBpHash: value.next_bp_hash.0.into(),
-            blockMerkleRoot: value.block_merkle_root.0.into(),
+            epoch_id: value.epoch_id,
+            next_epoch_id: value.next_epoch_id,
+            prev_state_root: value.prev_state_root,
+            outcome_root: value.outcome_root,
+            timestamp_nanosec: value.timestamp_nanosec,
+            next_bp_hash: value.next_bp_hash,
+            block_merkle_root: value.block_merkle_root,
+        })
+    }
+}
+
+impl TryFrom<NearExecutionOutcomeWithIdView> for ExecutionOutcomeWithIdView {
+    type Error = anyhow::Error;
+
+    fn try_from(value: NearExecutionOutcomeWithIdView) -> Result<Self, Self::Error> {
+        Ok(ExecutionOutcomeWithIdView {
+            proof: value.proof,
+            block_hash: value.block_hash,
+            id: value.id,
+            outcome: value.outcome.try_into()?,
+        })
+    }
+}
+
+impl TryFrom<NearExecutionOutcomeView> for ExecutionOutcomeView {
+    type Error = anyhow::Error;
+
+    fn try_from(value: NearExecutionOutcomeView) -> Result<Self, Self::Error> {
+        Ok(ExecutionOutcomeView {
+            logs: value.logs,
+            receipt_ids: value.receipt_ids,
+            gas_burnt: value.gas_burnt,
+            tokens_burnt: value.tokens_burnt,
+            executor_id: value.executor_id,
+            status: value.status,
         })
     }
 }

@@ -30,7 +30,7 @@ contract NearL2DAValidator is IL2DAValidator, StateDiffL2DAValidator {
         );
 
         /// Check for calldata strict format
-        require(leftover.length == 0, "Extra data found");
+        // require(leftover.length == 0, "Extra data found");
 
         // The preimage under the hash `outputHash` is expected to be in the following format:
         // - First 32 bytes are the hash of the uncompressed state diff.

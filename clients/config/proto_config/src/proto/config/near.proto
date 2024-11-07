@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package zksync.config.near;
+
+message Near {
+  optional string evm_provider_url = 1;
+  optional string network = 2;
+  optional string contract = 3;
+  optional string bridge_contract = 4;
+  optional string account_id = 5;
+  optional string secret_key = 6;
+}
+
+// This wrapper is required to read the config from the file with nested structure
+message NearConfig {
+  optional Near near = 1;
+}
